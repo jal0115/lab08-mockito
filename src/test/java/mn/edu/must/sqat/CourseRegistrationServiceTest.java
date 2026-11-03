@@ -3,6 +3,9 @@ package mn.edu.must.sqat;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -75,6 +78,72 @@ class CourseRegistrationServiceTest {
         String result = service.register("S3", "CS201");
 
         assertEquals("ERROR_PREREQUISITES", result);
+        verify(repository, never()).saveRegistration(anyString(), anyString());
+    }
+    // A5
+    @Test
+    void register_emailSenderThrows_stillReturnsOkAndSaves() {
+        Student s = new Student("S1", "s1@must.edu.mn", true, List.of("CS101"));
+        when(repository.findStudent("S1")).thenReturn(s);
+        when(repository.courseExists("CS201")).thenReturn(true);
+        when(repository.prerequisites("CS201")).thenReturn(List.of("CS101"));
+        doThrow(new RuntimeException("smtp down"))
+                .when(emailSender).send(anyString(), anyString(), anyString());
+
+        String result = service.register("S1", "CS201");
+
+        assertEquals("OK", result);
+        verify(repository).saveRegistration("S1", "CS201");
+    }
+
+    // A6 (эхний хувилбар: зөвхөн studentId = null)
+    @Test
+    void register_nullStudentId_throwsIllegalArgumentAndTouchesNoDependency() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.register(null, "CS201"));
+
+        verifyNoInteractions(repository, emailSender);
+    }
+
+    // A7
+    @Test
+    void register_success_emailBodyContainsCourseCode() {
+        Student s = new Student("S1", "s1@must.edu.mn", true, List.of("CS101"));
+        when(repository.findStudent("S1")).thenReturn(s);
+        when(repository.courseExists("CS201")).thenReturn(true);
+        when(repository.prerequisites("CS201")).thenReturn(List.of("CS101"));
+        ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
+
+        service.register("S1", "CS201");
+
+        verify(emailSender).send(eq("s1@must.edu.mn"), anyString(), body.capture());
+        assertTrue(body.getValue().contains("CS201"));
+    }
+
+    // A8
+    @ParameterizedTest(name = "{0} -> {1}")
+    @CsvSource({
+            "NO_STUDENT,      ERROR_NO_STUDENT",
+            "INACTIVE,        ERROR_INACTIVE_STUDENT",
+            "MISSING_PREREQ,  ERROR_PREREQUISITES"
+    })
+    void register_errorScenarios_returnExpectedErrorCode(String scenario, String expected) {
+        switch (scenario) {
+            case "NO_STUDENT" ->
+                    lenient().when(repository.findStudent("S1")).thenReturn(null);
+            case "INACTIVE" ->
+                    lenient().when(repository.findStudent("S1"))
+                            .thenReturn(new Student("S1", "s1@must.edu.mn", false, List.of()));
+            case "MISSING_PREREQ" -> {
+                lenient().when(repository.findStudent("S1"))
+                        .thenReturn(new Student("S1", "s1@must.edu.mn", true, List.of()));
+                lenient().when(repository.courseExists("CS201")).thenReturn(true);
+                lenient().when(repository.prerequisites("CS201")).thenReturn(List.of("CS101"));
+            }
+            default -> fail("unknown scenario: " + scenario);
+        }
+
+        assertEquals(expected, service.register("S1", "CS201"));
         verify(repository, never()).saveRegistration(anyString(), anyString());
     }
 }
