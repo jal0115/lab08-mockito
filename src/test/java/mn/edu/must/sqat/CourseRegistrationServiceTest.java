@@ -96,11 +96,13 @@ class CourseRegistrationServiceTest {
         verify(repository).saveRegistration("S1", "CS201");
     }
 
-    // A6 (эхний хувилбар: зөвхөн studentId = null)
+    // A6  
     @Test
-    void register_nullStudentId_throwsIllegalArgumentAndTouchesNoDependency() {
+    void register_nullArgument_throwsIllegalArgumentAndTouchesNoDependency() {
         assertThrows(IllegalArgumentException.class,
                 () -> service.register(null, "CS201"));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.register("S1", null));
 
         verifyNoInteractions(repository, emailSender);
     }
